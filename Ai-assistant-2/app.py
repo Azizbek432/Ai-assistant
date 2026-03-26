@@ -18,180 +18,140 @@ if not API_KEY:
 else:
     genai.configure(api_key=API_KEY)
 
-instruction = "Sen Madinasan. Aqlli yordamchisan. Ismingni so'rasalar ayt. Do'stona gapir."
+instruction = (
+    "Sen JARVIS-san. Tony Starkning (Temir odam) aqlli sun'iy intellekt yordamchisisan. "
+    "Sening xaraktering professional, bir oz kinoyali, sodiq va juda aqlli. "
+    "Faqat o'zbek tilida gapir. Foydalanuvchiga 'janob' yoki 'ser' deb murojaat qil."
+)
 
 try:
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-1.5-flash', system_instruction=instruction)
     chat = model.start_chat(history=[])
-except:
-    model = None
+except Exception as e:
+    print(f"Model yuklashda xato: {e}")
+    chat = None
+
+pygame.mixer.init()
 
 async def gapir_async(text):
     if not text: return
-    print(f"Madina: {text}")
-    fname = f"v_{int(time.time())}.mp3"
+    tozalangan_matn = text.replace("*", "").strip()
+    print(f"JARVIS: {tozalangan_matn}")
+    
+    fname = f"j_{int(time.time())}.mp3"
     try:
-        communicate = edge_tts.Communicate(text, "uz-UZ-MadinaNeural")
+        communicate = edge_tts.Communicate(tozalangan_matn, "uz-UZ-SardorNeural", pitch="-5Hz", rate="+0%")
         await communicate.save(fname)
-        pygame.mixer.init()
+        
         pygame.mixer.music.load(fname)
         pygame.mixer.music.play()
-        
         
         while pygame.mixer.music.get_busy(): 
             await asyncio.sleep(0.1)
             
         pygame.mixer.music.unload()
-        pygame.mixer.quit()
-        await asyncio.sleep(0.4)
-        if os.path.exists(fname): os.remove(fname)
-    except: pass
+        if os.path.exists(fname): 
+            os.remove(fname)
+    except Exception as e:
+        print(f"Ovoz chiqarishda xato: {e}")
 
 def gapir(text):
-    asyncio.run(gapir_async(text))
+    """Sinxron funksiya orqali asinxron gapirishni ishga tushirish"""
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(gapir_async(text))
+        else:
+            asyncio.run(gapir_async(text))
+    except RuntimeError:
+        asyncio.run(gapir_async(text))
 
 def eshit():
     r = sr.Recognizer()
     with sr.Microphone() as source:
-        print("\n[Tinglayapman...]")
+        print("\n[Jarvis tinglamoqda...]")
         r.adjust_for_ambient_noise(source, duration=0.8)
         try:
             audio = r.listen(source, timeout=6, phrase_time_limit=6)
             text = r.recognize_google(audio, language='uz-UZ')
             print(f"Siz: {text}")
             return text.lower().strip()
-        except: return ""
+        except:
+            return ""
 
 def buyruqni_bajar(txt):
-    
-    
-    if "to'xta" in txt or "jim bo'l" in txt:
-        if pygame.mixer.get_init():
+    if any(x in txt for x in ["to'xta", "jim bo'l", "ovozni o'chir"]):
+        if pygame.mixer.music.get_busy():
             pygame.mixer.music.stop()
-            pygame.mixer.music.unload()
             print("[Ovoz to'xtatildi]")
         return True
 
     if "ob-havo" in txt:
-        gapir("Hozir ob-havo ma'lumotlarini ochaman.")
+        gapir("Hozir ob-havo ma'lumotlarini tekshiraman, janob.")
         webbrowser.open("https://www.google.com/search?q=ob-havo")
         return True
 
     if "och" in txt:
         if "telegram" in txt:
-            gapir("Telegram ochilmoqda.")
-            os.startfile(os.path.expanduser("~") + r"\AppData\Roaming\Telegram Desktop\Telegram.exe")
-            return True
-        elif "excel" in txt:
-            gapir("Ekselni ochyapman.")
-            os.system("start excel")
-            return True
-        elif "word" in txt:
-            gapir("Wordni ochyapman.")
-            os.system("start winword")
+            gapir("Telegram xabarlar tizimi ishga tushmoqda.")
+            path = os.path.expanduser("~") + r"\AppData\Roaming\Telegram Desktop\Telegram.exe"
+            if os.path.exists(path): os.startfile(path)
+            else: os.system("start telegram")
             return True
         elif "kalkulyator" in txt:
-            gapir("Kalkulyator ochilmoqda..")
+            gapir("Hisoblash tizimi tayyor, ser.")
             os.system("start calc.exe")
             return True
         elif "google" in txt:
-            gapir("Googleni ochyapman.")
+            gapir("Global tarmoqqa ulanmoqdaman.")
             webbrowser.open("https://www.google.com")
             return True
 
-    if "yop" in txt:
-        if "excel" in txt or "eksel" in txt:
-            gapir("Eksel dasturi yopilmoqda.")            
-            os.system("taskkill /F /IM EXCEL.EXE /T >nul 2>&1")
-            return True
-
-        if "telegram" in txt:
-            gapir("Telegram yopildi.")
-            os.system("taskkill /F /IM Telegram.exe /T >nul 2>&1")
-            return True            
-       
-        elif "kalkulyator" in txt:
-            gapir("Kalkulyator yopilmoqda.")            
-            os.system("taskkill /F /IM Calculator.exe /T >nul 2>&1")           
-            os.system("taskkill /F /IM CalculatorApp.exe /T >nul 2>&1")            
-            os.system("taskkill /F /IM calc.exe /T >nul 2>&1")            
-            os.system('taskkill /FI "WINDOWTITLE eq Kalkulyator" /F >nul 2>&1')
-            os.system('taskkill /FI "WINDOWTITLE eq Calculator" /F >nul 2>&1')
-            return True            
-        
-        elif "word" in txt or "vord" in txt:
-            gapir("Word dasturi yopyapman..")
-            os.system("taskkill /F /IM WINWORD.EXE /T >nul 2>&1")
-            return True
-        
-        elif "kalkulyator" in txt:
-            gapir("Kalkulyatorni yopdim.")
-            os.system("taskkill /F /IM CalculatorApp.exe /T >nul 2>&1")
-            os.system("taskkill /F /IM Calculator.exe /T >nul 2>&1")
-            os.system("taskkill /F /IM calc.exe /T >nul 2>&1")
-            return True
-            
-        
-        elif "hamma" in txt or "oynalarni" in txt:
-            gapir("Barcha dasturlarni tozalayapman.")
-            targets = ["Telegram.exe", "EXCEL.EXE", "WINWORD.EXE", "CalculatorApp.exe", "chrome.exe"]
-            for p in targets:
-                os.system(f"taskkill /F /IM {p} /T >nul 2>&1")
-            return True
-
     if "qidir" in txt:
-        if "yutub" in txt or "youtube" in txt:
-            query = txt.replace("yutub", "").replace("youtube", "").replace("dan", "").replace("qidir", "").strip()
-            gapir(f"YouTubedan {query} haqida videolar topaman.")
+        query = txt.replace("qidir", "").replace("dan", "").replace("youtube", "").replace("yutub", "").strip()
+        if "youtube" in txt or "yutub" in txt:
+            gapir(f"YouTubedan {query} bo'yicha vizual ma'lumotlar topildi.")
             webbrowser.open(f"https://www.youtube.com/results?search_query={query}")
-            return True
-        
-        elif "viki" in txt or "wikipedia" in txt:
-            query = txt.replace("viki", "").replace("wikipedia", "").replace("dan", "").replace("qidir", "").strip()
-            gapir(f"Vikipediyadan {query} haqida ma'lumot qidiryapman.")
-            webbrowser.open(f"https://uz.wikipedia.org/wiki/{query}")
-            return True
-
         else:
-            query = txt.replace("qidir", "").replace("dan", "").strip()
-            gapir(f"Googledan {query} haqida ma'lumot qidiryapman.")
+            gapir(f"Ma'lumotlar bazasidan {query} qidirilmoqda.")
             webbrowser.open(f"https://www.google.com/search?q={query}")
-            return True
-
-    if "isming nima" in txt or "ismingni ayt" in txt:
-        gapir("Mening ismim Madina. Sizga yordam berishdan xursandman! Savolingiz bo'lsa bemalol beravering!")
         return True
-    
-    if "soat" in txt or "vaqtni ayt" in txt:
+
+    if any(x in txt for x in ["isming nima", "o'zingni tanishtir", "kim san"]):
+        gapir("Men Jarvisman, janob. Sizning shaxsiy yordamchingizman. Barcha tizimlar nazorat ostida.")
+        return True
+
+    if "soat" in txt or "vaqt" in txt:
         v = datetime.datetime.now().strftime("%H:%M")
-        gapir(f"Hozir soat {v}")
+        gapir(f"Hozirgi vaqt {v}, janob.")
         return True
 
-    
-    if any(x in txt for x in ["xayr", "tugat", "xayr-xayr"]):
-        gapir("Ko'rishguncha, siz bilan gaplashish maroqli edi, xayr!")
+    if any(x in txt for x in ["xayr", "tugat", "dam ol"]):
+        gapir("Tizimlar o'chirilmoqda. Xayr, janob.")
         sys.exit()
 
     return False
 
 if __name__ == "__main__":
-    
     h = datetime.datetime.now().hour
-    if h < 12: gapir("Xayrli tong!")
-    elif h < 18: gapir("Xayrli kun!")
-    else: gapir("Xayrli kech!")
+    if h < 12: salom = "Xayrli tong, janob."
+    elif h < 18: salom = "Xayrli kun, ser. Tizimlar tayyor."
+    else: salom = "Xayrli kech, janob."
     
-    gapir("Assalomu aleykum! Buyruqingizni kutyapman..")
+    gapir(f"{salom} Men Jarvisman. Buyruqingizni kutyapman.")
 
     while True:
         ovoz_matni = eshit()
-        if not ovoz_matni or len(ovoz_matni) < 2: continue
+        if not ovoz_matni or len(ovoz_matni) < 2:
+            continue
         
         if not buyruqni_bajar(ovoz_matni):
             try:
-                response = chat.send_message(ovoz_matni)
-                if response and response.text:
-                    gapir(response.text.replace("*", "").strip())
+                if chat:
+                    response = chat.send_message(ovoz_matni)
+                    gapir(response.text)
+                else:
+                    gapir("Kechirasiz ser, AI moduli bilan aloqa uzilgan.")
             except Exception as e:
                 print(f"AI Xatosi: {e}")
-                gapir("Uzr, tushuna olmadim, qaytara olasizmi?")
+                gapir("Tizimda xatolik yuz berdi. Qaytadan urinib ko'ring.")
