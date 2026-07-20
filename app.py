@@ -1,21 +1,35 @@
+import os
+import sys
+import time
+import ctypes
+import asyncio
+import datetime
+import webbrowser
+import pygame
+import edge_tts
+import speech_recognition as sr
+from dotenv import load_dotenv
 from google import genai
 from google.genai import types
-from dotenv import load_dotenv
-import speech_recognition as sr
-import edge_tts
-import pygame
-import asyncio
-import os
-import webbrowser
-import time
-import datetime
-import sys
+
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
+os.environ['PYGAME_DETECT_AVX2'] = "1"
+
+ERROR_HANDLER_FUNC = ctypes.CFUNCTYPE(None, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p)
+def py_error_handler(filename, line, function, err, fmt):
+    pass
+c_error_handler = ERROR_HANDLER_FUNC(py_error_handler)
+
+try:
+    asound = ctypes.cdll.LoadLibrary('libasound.so.2')
+    asound.snd_lib_error_set_handler(c_error_handler)
+except:
+    pass
 
 load_dotenv()
-
 API_KEY = os.getenv("GEMINI_API_KEY")
-client = None
 
+client = None
 if not API_KEY:
     print("Xato: API kalit topilmadi! .env faylini tekshiring.")
 else:
@@ -34,21 +48,11 @@ system_instruction = (
 pygame.mixer.init()
 recognizer = sr.Recognizer()
 
-def check_stop_signal():
-    with sr.Microphone() as source:
-        try:
-            audio = recognizer.listen(source, timeout=0.8, phrase_time_limit=0.8)
-            text = recognizer.recognize_google(audio, language='uz-UZ').lower().strip()
-            if any(k in text for k in ["to'xta", "jim", "o'chir", "toxta"]):
-                return True
-        except:
-            pass
-    return False
-
 async def speak_async(text):
     if not text: return
     
-    sentences = [s.strip() for s in text.replace("*", "").split(".") if s.strip()]
+    clean_text = text.replace("*", "").replace("#", "")
+    sentences = [s.strip() for s in clean_text.split(".") if s.strip()]
     
     for sentence in sentences:
         print(f"JARVIS: {sentence}.")
@@ -70,31 +74,20 @@ async def speak_async(text):
                 
         except Exception as e:
             print(f"Ovoz chiqarishda xato: {e}")
-            
-        if check_stop_signal():
-            print("\n[Ovoz foydalanuvchi buyrug'iga ko'ra to'xtatildi!]")
-            break
 
 def speak(text):
     try:
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-            
-        if loop and loop.is_running():
-            loop.create_task(speak_async(text))
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.ensure_future(speak_async(text))
         else:
-            new_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(new_loop)
-            new_loop.run_until_complete(speak_async(text))
-            new_loop.close()
-    except Exception as e:
-        print(f"Loop xatosi: {e}")
+            loop.run_until_complete(speak_async(text))
+    except Exception:
+        asyncio.run(speak_async(text))
 
 def execute_command(text_command):
     if any(k in text_command for k in ["to'xta", "jim", "o'chir", "toxta"]):
-        if pygame.mixer.get_init() and pygame.mixer.music.get_busy():
+        if pygame.mixer.music.get_busy():
             pygame.mixer.music.stop()
         return True
 
@@ -114,7 +107,6 @@ def execute_command(text_command):
             return True
 
     is_open_command = any(k in text_command for k in ["och", "ishga tushir", "start"])
-    
     if "telegram" in text_command and (is_open_command or "yop" not in text_command):
         speak("Telegram ishga tushmoqda.")
         os.system("telegram-desktop &")
@@ -128,20 +120,15 @@ def execute_command(text_command):
         webbrowser.open("https://www.google.com")
         return True
 
-    if any(k in text_command for k in ["qidir", "izla", "yutuq", "youtube", "yutub"]):
-        is_youtube = any(y in text_command for y in ["youtube", "yutub", "yutuq"])
-        query = text_command.replace("qidir", "").replace("izla", "").replace("dan", "").replace("youtube", "").replace("yutub", "").replace("yutuq", "").strip()
+    if any(k in text_command for k in ["qidir", "izla", "youtube", "yutub"]):
+        is_youtube = any(y in text_command for y in ["youtube", "yutub"])
+        query = text_command.replace("qidir", "").replace("izla", "").replace("youtube", "").replace("yutub", "").strip()
         if is_youtube:
             speak(f"YouTubedan {query} qidirilmoqda.")
             webbrowser.open(f"https://www.youtube.com/results?search_query={query}")
-            return True
         else:
             speak(f"Google'dan {query} qidirilmoqda.")
             webbrowser.open(f"https://www.google.com/search?q={query}")
-            return True
-
-    if any(k in text_command for k in ["isming nima", "o'zingni tanishtir", "kim san"]):
-        speak("Men Jarvisman, janob. Sizning shaxsiy yordamchingizman.")
         return True
 
     if "soat" in text_command or "vaqt" in text_command:
@@ -157,9 +144,10 @@ def execute_command(text_command):
 
 def listen_active():
     with sr.Microphone() as source:
+        recognizer.adjust_for_ambient_noise(source, duration=0.5)
         print("\n[Jarvis tinglamoqda...]")
         try:
-            audio = recognizer.listen(source, timeout=4, phrase_time_limit=4)
+            audio = recognizer.listen(source, timeout=5, phrase_time_limit=5)
             text = recognizer.recognize_google(audio, language='uz-UZ')
             print(f"Siz: {text}")
             return text.lower().strip()
@@ -173,35 +161,29 @@ if __name__ == "__main__":
 
     while True:
         voice_text = listen_active()
+        
         if not voice_text or len(voice_text) < 2:
             continue
         
         if not execute_command(voice_text):
             if client:
-                for attempt in range(3):
-                    try:
-                        response = client.models.generate_content(
-                            model='gemini-2.5-flash',
-                            contents=voice_text,
-                            config=types.GenerateContentConfig(
-                                system_instruction=system_instruction
-                            )
+                try:
+                    response = client.models.generate_content(
+                        model='gemini-1.5-flash', 
+                        contents=voice_text,
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_instruction,
+                            max_output_tokens=100
                         )
-                        if response.text:
-                            speak(response.text)
-                            break 
-                    except Exception as e:
-                        error_string = str(e)
-                        if "429" in error_string or "RESOURCE_EXHAUSTED" in error_string:
-                            print("[429 Xato: Kunlik limit tugadi!]")
-                            speak("Kunlik limit tugadi, janob. Mahalliy buyruqlar ishlamoqda.")
-                            break
-                        elif "503" in error_string and attempt < 2:
-                            time.sleep(2) 
-                            continue
-                        else:
-                            print(f"AI Xatosi: {e}")
-                            speak("Xatolik yuz berdi, ser.")
-                            break
+                    )
+                    if response.text:
+                        speak(response.text)
+                except Exception as e:
+                    error_string = str(e)
+                    if "429" in error_string:
+                        print("[Limit tugadi]")
+                        speak("Limit tugadi, janob.")
+                    else:
+                        print(f"AI Xatosi: {e}")
             else:
-                speak("AI tizimi o'chiq.")
+                speak("AI tizimi ulanmagan.")
