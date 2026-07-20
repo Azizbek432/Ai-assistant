@@ -1,4 +1,5 @@
 from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 import speech_recognition as sr
 import edge_tts
@@ -35,9 +36,8 @@ recognizer = sr.Recognizer()
 
 def check_stop_signal():
     with sr.Microphone() as source:
-        recognizer.adjust_for_ambient_noise(source, duration=0.2)
         try:
-            audio = recognizer.listen(source, timeout=1.2, phrase_time_limit=1.2)
+            audio = recognizer.listen(source, timeout=0.8, phrase_time_limit=0.8)
             text = recognizer.recognize_google(audio, language='uz-UZ').lower().strip()
             if any(k in text for k in ["to'xta", "jim", "o'chir", "toxta"]):
                 return True
@@ -106,26 +106,22 @@ def execute_command(text_command):
     if any(k in text_command for k in ["yop", "yo'qot", "stop", "yopa"]):
         if "telegram" in text_command:
             speak("Telegram yopilmoqda.")
-            os.system("taskkill /F /IM Telegram.exe /T >nul 2>&1")
+            os.system("pkill telegram-desktop")
             return True
         elif any(k in text_command for k in ["kalku", "calcu", "hisob"]):
             speak("Hisoblash tizimi yopilmoqda.")
-            os.system("taskkill /F /IM CalculatorApp.exe /T >nul 2>&1")
-            os.system("taskkill /F /IM Calculator.exe /T >nul 2>&1")
-            os.system("taskkill /F /IM calc.exe /T >nul 2>&1")
+            os.system("pkill gnome-calculator")
             return True
 
     is_open_command = any(k in text_command for k in ["och", "ishga tushir", "start"])
     
     if "telegram" in text_command and (is_open_command or "yop" not in text_command):
         speak("Telegram ishga tushmoqda.")
-        path = os.path.expanduser("~") + r"\AppData\Roaming\Telegram Desktop\Telegram.exe"
-        if os.path.exists(path): os.startfile(path)
-        else: os.system("start telegram")
+        os.system("telegram-desktop &")
         return True
     elif any(k in text_command for k in ["kalku", "calcu", "hisob"]) and (is_open_command or "yop" not in text_command):
         speak("Kalkulyator tayyor.")
-        os.system("start calc.exe")
+        os.system("gnome-calculator &")
         return True
     elif "google" in text_command or "brauzer" in text_command:
         speak("Brauzer ochilmoqda.")
@@ -162,9 +158,8 @@ def execute_command(text_command):
 def listen_active():
     with sr.Microphone() as source:
         print("\n[Jarvis tinglamoqda...]")
-        recognizer.adjust_for_ambient_noise(source, duration=0.6)
         try:
-            audio = recognizer.listen(source, timeout=5, phrase_time_limit=5)
+            audio = recognizer.listen(source, timeout=4, phrase_time_limit=4)
             text = recognizer.recognize_google(audio, language='uz-UZ')
             print(f"Siz: {text}")
             return text.lower().strip()
@@ -188,7 +183,9 @@ if __name__ == "__main__":
                         response = client.models.generate_content(
                             model='gemini-2.5-flash',
                             contents=voice_text,
-                            config={'system_instruction': system_instruction}
+                            config=types.GenerateContentConfig(
+                                system_instruction=system_instruction
+                            )
                         )
                         if response.text:
                             speak(response.text)
